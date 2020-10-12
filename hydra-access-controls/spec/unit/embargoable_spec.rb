@@ -19,6 +19,59 @@ describe Hydra::AccessControls::Embargoable do
   let(:model) { TestModel.new }
   subject { model }
 
+  describe 'an object under embargo/lease' do
+    before do
+      class ModelWithPersistence < ActiveFedora::Base
+        include Hydra::AccessControls::Embargoable
+      end
+    end
+    after { Object.send(:remove_const, :ModelWithPersistence) }
+    let(:original_date) { 7.days.from_now }
+    let(:updated_date) { 14.days.from_now }
+    subject { ModelWithPersistence.new }
+    context 'saved with a new embargo release date' do
+      it 'will persist the new date' do
+        subject.visibility_during_embargo = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE
+        subject.visibility_after_embargo = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PUBLIC
+        subject.embargo_release_date = original_date
+        subject.save
+
+        # These next three lines are to verify the round-trip for saves.
+        persisted_object = subject.class.find(subject.id)
+        expect(persisted_object).to be_under_embargo
+        expect(persisted_object.embargo_release_date).to eq(original_date)
+
+        expect do
+          persisted_object.embargo_release_date = updated_date
+          persisted_object.save
+        end.to change { persisted_object.class.find(persisted_object.id).embargo_release_date }
+                 .from(original_date)
+                 .to(updated_date)
+      end
+    end
+
+    context 'saved with a new lease expiration date' do
+      it 'will persist the new date' do
+        subject.visibility_during_lease =  Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PUBLIC
+        subject.visibility_after_lease = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE
+        subject.lease_expiration_date = original_date
+        subject.save
+
+        # These next three lines are to verify the round-trip for saves.
+        persisted_object = subject.class.find(subject.id)
+        expect(persisted_object).to be_active_lease
+        expect(persisted_object.lease_expiration_date).to eq(original_date)
+
+        expect do
+          persisted_object.lease_expiration_date = updated_date
+          persisted_object.save
+        end.to change { persisted_object.class.find(persisted_object.id).lease_expiration_date }
+                 .from(original_date)
+                 .to(updated_date)
+      end
+    end
+  end
+
   describe '#embargo_indexer_class' do
     subject { model.embargo_indexer_class }
     it { is_expected.to eq Hydra::AccessControls::EmbargoIndexer }
